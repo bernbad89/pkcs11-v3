@@ -38,6 +38,32 @@ static inline void putRSAAESKeyWrapParams(CK_RSA_AES_KEY_WRAP_PARAMS_PTR params,
 	params->pOAEPParams = pOAEPParams;
 }
 
+// Define our own HKDF params structure
+typedef struct PKCS11_HKDF_PARAMS {
+    CK_BBOOL bExtract;
+    CK_BBOOL bExpand;
+    CK_MECHANISM_TYPE prfHashMechanism;
+    CK_ULONG ulSaltType;
+    CK_BYTE_PTR pSalt;
+    CK_ULONG ulSaltLen;
+    CK_OBJECT_HANDLE hSaltKey;
+    CK_BYTE_PTR pInfo;
+    CK_ULONG ulInfoLen;
+} PKCS11_HKDF_PARAMS;
+typedef PKCS11_HKDF_PARAMS* PKCS11_HKDF_PARAMS_PTR;
+
+static inline void putHkdfParamsSalt(PKCS11_HKDF_PARAMS_PTR params, CK_BYTE_PTR pSalt, CK_ULONG ulSaltLen)
+{
+	params->pSalt = pSalt;
+	params->ulSaltLen = ulSaltLen;
+}
+
+static inline void putHkdfParamsInfo(PKCS11_HKDF_PARAMS_PTR params, CK_BYTE_PTR pInfo, CK_ULONG ulInfoLen)
+{
+	params->pInfo = pInfo;
+	params->ulInfoLen = ulInfoLen;
+}
+
 */
 import "C"
 import "unsafe"
@@ -235,5 +261,61 @@ func cRSAAESKeyWrapParams(p *RSAAESKeyWrapParams, arena arena) ([]byte, arena) {
 		buf, _ := arena.Allocate(param)
 		C.putRSAAESKeyWrapParams(&params, buf)
 	}
+	return memBytes(unsafe.Pointer(&params), unsafe.Sizeof(params)), arena
+}
+
+// HkdfParams can be passed to NewMechanism to implement CKM_HKDF_DERIVE.
+type HkdfParams struct {
+	BExtract         bool
+	BExpand          bool
+	PrfHashMechanism uint
+	UlSaltType       uint
+	PSalt            []byte
+	HSaltKey         ObjectHandle
+	PInfo            []byte
+}
+
+// NewHkdfParams creates a CK_HKDF_PARAMS structure suitable for use with the CKM_HKDF_DERIVE mechanism.
+func NewHkdfParams(bExtract, bExpand bool, prfHashMechanism, ulSaltType uint, pSalt []byte, hSaltKey ObjectHandle, pInfo []byte) *HkdfParams {
+	return &HkdfParams{
+		BExtract:         bExtract,
+		BExpand:          bExpand,
+		PrfHashMechanism: prfHashMechanism,
+		UlSaltType:       ulSaltType,
+		PSalt:            pSalt,
+		HSaltKey:         hSaltKey,
+		PInfo:            pInfo,
+	}
+}
+
+func cHkdfParams(p *HkdfParams, arena arena) ([]byte, arena) {
+	var bExtract, bExpand C.CK_BBOOL
+	if p.BExtract {
+		bExtract = C.CK_BBOOL(1)
+	}
+	if p.BExpand {
+		bExpand = C.CK_BBOOL(1)
+	}
+
+	params := C.PKCS11_HKDF_PARAMS{
+		bExtract:         bExtract,
+		bExpand:          bExpand,
+		prfHashMechanism: C.CK_MECHANISM_TYPE(p.PrfHashMechanism),
+		ulSaltType:       C.CK_ULONG(p.UlSaltType),
+		hSaltKey:         C.CK_OBJECT_HANDLE(p.HSaltKey),
+	}
+
+	// Handle salt data
+	if len(p.PSalt) > 0 {
+		saltBuf, saltLen := arena.Allocate(p.PSalt)
+		C.putHkdfParamsSalt(C.PKCS11_HKDF_PARAMS_PTR(&params), C.CK_BYTE_PTR(saltBuf), saltLen)
+	}
+
+	// Handle info data
+	if len(p.PInfo) > 0 {
+		infoBuf, infoLen := arena.Allocate(p.PInfo)
+		C.putHkdfParamsInfo(C.PKCS11_HKDF_PARAMS_PTR(&params), C.CK_BYTE_PTR(infoBuf), infoLen)
+	}
+
 	return memBytes(unsafe.Pointer(&params), unsafe.Sizeof(params)), arena
 }
