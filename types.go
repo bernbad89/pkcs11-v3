@@ -295,6 +295,8 @@ func cMechanism(mechList []*Mechanism) (arena, *C.CK_MECHANISM) {
 		param, arena = cKeyDerivationStringDataParams(p, arena)
 	case *RSAAESKeyWrapParams:
 		param, arena = cRSAAESKeyWrapParams(p, arena)
+	case *HkdfParams:
+		param, arena = cHkdfParams(p, arena)
 	}
 	if len(param) != 0 {
 		buf, len := arena.Allocate(param)
